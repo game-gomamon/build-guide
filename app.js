@@ -246,7 +246,7 @@
     var boxes = parts.length
       ? parts.map(function (value, i) {
           return '<span class="skill-box">' + esc(value) +
-            "<span>SKL " + (i + 1) + "</span></span>";
+            "<span>Skill " + (i + 1) + "</span></span>";
         }).join("")
       : '<span class="skill-box">—<span>SKILL</span></span>';
     return '<section class="panel"><h2>Recommended skill</h2>' +
