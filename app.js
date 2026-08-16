@@ -357,9 +357,7 @@
     return '' +
       '<article class="team' + (team.id === targetId ? " is-target" : "") +
       '" id="team-' + esc(team.id) + '">' +
-      '<div class="team-head"><h2>' + esc(team.name) + "</h2>" +
-      '<a class="eyebrow" href="#gvg/' + encodeURIComponent(team.id) +
-      '" aria-label="Permalink to ' + esc(team.name) + '">Permalink</a></div>' +
+      '<div class="team-head"><h2>' + esc(team.name) + "</h2></div>" +
       '<div class="slots">' + team.slots.map(teamSlot).join("") + "</div>" +
       "</article>";
   }
@@ -381,69 +379,13 @@
     return '' +
       '<a class="slot" href="' + open + '"' +
       (has(slot.element) ? ' data-element="' + esc(slot.element) + '"' : "") + ">" +
-      '<span class="slot-top">' +
-      '<span class="slot-face">' + art(slot.portrait || slot.card, slot.name, initials(slot.name)) + "</span>" +
+      '<span class="slot-art">' + art(slot.card || slot.portrait, slot.name, initials(slot.name)) + "</span>" +
+      '<span class="slot-info">' +
       '<span class="slot-name">' + esc(slot.name) +
       (has(slot.element) ? "<span>" + esc(slot.element) + "</span>" : "") +
-      "</span></span>" +
-      '<span class="slot-body">' + matrices + shell + "</span></a>";
-  }
-
-  /* -------------------------------------------------------- view: codex -- */
-
-  function codexBlock(title, table, extra) {
-    var items = Object.keys(table).map(function (id) { return table[id]; });
-    if (!items.length) return "";
-    return '<section class="panel"><h2>' + esc(title) + " · " + items.length + "</h2>" +
-      '<div class="codex-grid">' + items.map(function (item) {
-        return '<div class="codex-item">' + icon(item.icon, "") +
-          "<b>" + esc(item.name) + "</b>" +
-          (extra && has(item[extra.field])
-            ? '<span class="nodes">' + esc(item[extra.field]) + " " + esc(extra.suffix) + "</span>"
-            : "") +
-          "</div>";
-      }).join("") + "</div></section>";
-  }
-
-  function renderInfo() {
-    var meta = DATA.meta;
-    var blocks =
-      codexBlock("Matrix", DATA.matrices, { field: "full", suffix: "nodes" }) +
-      codexBlock("Shells", DATA.shells) +
-      codexBlock("Shell passives", DATA.passives) +
-      codexBlock("Elements", DATA.elements);
-
-    if (!blocks) {
-      view.innerHTML = '<p class="empty"><strong>The Information sheet has nothing to show.</strong>' +
-        "Add reference rows to core_data.xlsx and rebuild.</p>";
-      return;
-    }
-
-    view.innerHTML = '' +
-      '<div class="page-head">' +
-      '<p class="eyebrow">Section 03</p>' +
-      "<h1>Codex</h1>" +
-      "<p>Reference lists from the Information sheet, including how many nodes each Matrix holds.</p>" +
-      "</div>" +
-      '<div class="codex">' +
-      '<section class="panel"><h2>Data snapshot</h2>' +
-      '<div class="meta-list">' +
-      metaCell(meta.animusWithBuilds, "Animus with builds") +
-      metaCell(meta.animusTotal, "Animus in database") +
-      metaCell(meta.buildCount, "Build rows") +
-      metaCell(meta.teamCount, "GVG teams") +
-      "</div></section>" +
-      blocks +
-      (meta.warnings && meta.warnings.length
-        ? '<section class="panel"><h2>Build warnings</h2><ul class="warn-list">' +
-          meta.warnings.map(function (w) { return "<li>" + esc(w) + "</li>"; }).join("") +
-          "</ul></section>"
-        : "") +
-      "</div>";
-  }
-
-  function metaCell(value, label) {
-    return '<div class="meta-cell"><b>' + esc(value) + "</b><span>" + esc(label) + "</span></div>";
+      "</span>" +
+      '<span class="slot-gear">' + matrices + shell + "</span>" +
+      "</span></a>";
   }
 
   /* ------------------------------------------------------------- router -- */
@@ -469,9 +411,6 @@
     } else if (head === "gvg") {
       setActiveTab("gvg");
       renderGVG(parts[1]);
-    } else if (head === "info") {
-      setActiveTab("info");
-      renderInfo();
     } else {
       setActiveTab("builds");
       renderBuilds();

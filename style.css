@@ -712,12 +712,16 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
 
 .slots {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
   gap: 12px;
 }
 
+/* One slot = full-height artwork on the left, identity + gear on the right. */
 .slot {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 196px;
   overflow: hidden;
   background: var(--ink-2);
   border: 1px solid var(--line);
@@ -729,45 +733,58 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
-.slot-top {
+.slot-art {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 11px;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 76%);
-  border-bottom: 1px solid var(--line);
-}
-.slot-face {
-  position: relative;
-  flex: none;
-  width: 44px; height: 44px;
   overflow: hidden;
   background: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 50%;
+  border-right: 1px solid var(--line);
 }
-.slot-face img { width: 100%; height: 100%; object-fit: cover; }
-.slot-face .ph { font-size: 15px; }
-.slot-name {
+/* Absolute fill, so the art column takes its height from the gear column. */
+.slot-art .art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 12%;
+}
+.slot-art .ph { font-size: 22px; }
+
+.slot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
   min-width: 0;
+  padding: 12px 13px 13px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%);
+}
+
+.slot-name {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 5px 10px 6px;
   font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.15;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .slot-name span {
   display: block;
+  margin-top: 1px;
   font-family: var(--font-body);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: .12em;
+  letter-spacing: .14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-dim);
 }
 
-.slot-body { padding: 10px 11px 11px; display: grid; gap: 8px; }
+.slot-gear { display: grid; gap: 9px; min-width: 0; }
 
 .gear-row {
   display: flex;
@@ -796,62 +813,6 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   font-weight: 600;
   font-size: 13.5px;
 }
-
-/* -------------------------------------------------------------- codex --- */
-
-.codex { display: grid; gap: 18px; }
-
-.codex-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 8px;
-}
-
-.codex-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 11px;
-  font-size: 14px;
-  background: rgba(0, 0, 0, .26);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-}
-.codex-item img { flex: none; width: 30px; height: 30px; object-fit: contain; }
-.codex-item .ph-mini {
-  flex: none; width: 30px; height: 30px;
-  border: 1px dashed var(--line); border-radius: 4px;
-}
-.codex-item b {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 14px;
-}
-.codex-item .nodes {
-  margin-left: auto;
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--gold);
-}
-
-.meta-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-}
-.meta-cell { padding: 10px 12px; background: rgba(0,0,0,.26); border-radius: var(--r-sm); }
-.meta-cell b {
-  display: block;
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.meta-cell span { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-
-.warn-list { margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 13.5px; }
 
 /* --------------------------------------------------------------- foot --- */
 
@@ -906,17 +867,11 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   .p-id { margin-top: 0; }
   .options { grid-column: 1 / -1; margin-top: 4px; }
 
-  /* GVG: each slot reads as one short row instead of a tall block. */
-  .slot { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
-  .slot-top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 7px;
-    border-bottom: 0;
-    border-right: 1px solid var(--line);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent 82%);
-  }
-  .slot-body { padding: 9px 11px; gap: 6px; }
+  /* GVG: same pattern, just a narrower art column. */
+  .slot { grid-template-columns: 116px minmax(0, 1fr); min-height: 0; }
+  .slot-info { padding: 10px 11px 11px; gap: 9px; }
+  .slot-name { font-size: 14px; padding: 4px 8px 5px; }
+  .slot-gear { gap: 7px; }
 }
 
 @media (max-width: 420px) {
