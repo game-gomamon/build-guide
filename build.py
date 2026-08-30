@@ -4,7 +4,7 @@ build.py — turns core_data.xlsx into the static site's data.
 
 What it does
 ------------
-1. Reads the three sheets: Information, Build, GVG_team.
+1. Reads the sheets: Information, Build, GVG_team, Imprint.
 2. Extracts every picture that is stored *inside a cell* on the Information
    sheet (Excel's "Place in Cell" images) and writes it to assets/.
 3. Writes data.json, which is the only file the website loads.
@@ -54,6 +54,7 @@ ASSETS = ROOT / "assets"
 SHEET_INFORMATION = "Information"
 SHEET_BUILD = "Build"
 SHEET_GVG = "GVG_team"
+SHEET_IMPRINT = "Imprint"
 
 # Where each kind of extracted picture lands, and how wide it may be.
 IMAGE_TARGETS = {
@@ -63,7 +64,15 @@ IMAGE_TARGETS = {
     "shell": (ASSETS / "shells", 192),
     "passive": (ASSETS / "icons" / "passives", 128),
     "element": (ASSETS / "icons" / "elements", 96),
+    "imprint": (ASSETS / "imprints", 512),
+    "component": (ASSETS / "icons" / "components", 128),
 }
+
+# Columns of the Imprint sheet that are not component options.
+IMPRINT_RESERVED = {"no", "imprint", "remark", "recommendanimus"}
+
+# Formula results that mean "this cell is empty".
+EXCEL_ERRORS = {"#N/A", "#VALUE!", "#REF!", "#DIV/0!", "#NAME?", "#NULL!", "#NUM!"}
 
 WEBP_QUALITY = 82
 
@@ -107,7 +116,8 @@ def clean(value) -> str:
     if isinstance(value, float) and value.is_integer():
         value = int(value)
     text = str(value).strip()
-    if text.startswith("#") and text.endswith("!"):  # #VALUE!, #REF! ...
+    # #VALUE!, #REF!, #N/A, #NAME?, #DIV/0! ... all mean "nothing here".
+    if text.upper() in EXCEL_ERRORS or (text.startswith("#") and text.endswith("!")):
         return ""
     return text
 
@@ -297,6 +307,13 @@ def sheet_rows(worksheet) -> list[dict]:
     return records
 
 
+def sheet_headers(worksheet) -> list[str]:
+    """The header row, in column order, blanks removed."""
+    for row in worksheet.iter_rows(min_row=1, max_row=1, values_only=True):
+        return [h for h in (clean(cell) for cell in row) if h]
+    return []
+
+
 def read_information(worksheet, images: dict[str, str], xlsx_path: Path):
     """
     The Information sheet is a set of side-by-side lookup blocks:
@@ -336,10 +353,13 @@ def read_information(worksheet, images: dict[str, str], xlsx_path: Path):
     written: dict[str, bool] = {}
     used_image_cols: set[str] = set()
 
-    def build_lookup(header: str, kind: str, extra: dict | None = None) -> dict:
+    def build_lookup(
+        header: str, kind: str, extra: dict | None = None, optional: bool = False
+    ) -> dict:
         letter = headers.get(header.lower())
         if not letter:
-            warn(f"Information sheet has no '{header}' column; skipping that block")
+            if not optional:
+                warn(f"Information sheet has no '{header}' column; skipping that block")
             return {}
         icon_col = image_column_after(letter, used_image_cols)
         if icon_col:
@@ -402,8 +422,19 @@ def read_information(worksheet, images: dict[str, str], xlsx_path: Path):
     shells = build_lookup("Shell", "shell")
     passives = build_lookup("Shell Passive", "passive")
     elements = build_lookup("Element", "element")
+    imprints = build_lookup("Imprint", "imprint", optional=True)
+    components = build_lookup("Component", "component", optional=True)
 
-    return animus_art, matrices, shells, passives, elements, written
+    return {
+        "animus": animus_art,
+        "matrices": matrices,
+        "shells": shells,
+        "passives": passives,
+        "elements": elements,
+        "imprints": imprints,
+        "components": components,
+        "written": written,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -485,6 +516,69 @@ def make_build(record: dict, matrices: dict, shells: dict, passives: dict) -> di
     }
 
 
+def make_imprint(
+    record: dict,
+    headers: list[str],
+    art: dict,
+    components: dict,
+    animus_by_key: dict,
+    index: int,
+) -> dict:
+    """
+    One row of the Imprint sheet -> one imprint.
+
+    Component columns are discovered from the sheet's own header row: anything
+    that is not No / Imprint / Remark / Recommend Animus is treated as a
+    component, in the order the columns appear. Adding a fifth component to the
+    workbook therefore needs no change here.
+    """
+    name = clean(record.get("Imprint"))
+    ref = art.get(key(name), {})
+
+    component_list = []
+    for header in headers:
+        if key(header) in IMPRINT_RESERVED:
+            continue
+        options = split_list(record.get(header))
+        item = {"name": header, "options": options}
+        cref = components.get(key(header))
+        if cref:
+            item["id"] = cref["id"]
+            if cref.get("icon"):
+                item["icon"] = cref["icon"]
+        elif options:
+            warn(f"component '{header}' is not listed on the Information sheet")
+        component_list.append(item)
+
+    recommended = []
+    for animus_name in split_list(record.get("Recommend Animus")):
+        aref = animus_by_key.get(key(animus_name))
+        if not aref:
+            warn(f"imprint '{name}' recommends unknown Animus '{animus_name}'")
+        recommended.append(
+            {
+                "name": aref["name"] if aref else animus_name,
+                "animusId": aref["id"] if aref else "",
+                "portrait": aref.get("portrait", "") if aref else "",
+                "card": aref.get("card", "") if aref else "",
+                "element": aref.get("element", "") if aref else "",
+            }
+        )
+
+    filled = sum(1 for c in component_list if c["options"])
+    return {
+        "id": ref.get("id") or slugify(name or f"imprint-{index}"),
+        "no": clean(record.get("No")),
+        "name": ref.get("name") or name or f"Imprint {index}",
+        "card": ref.get("icon", ""),
+        "components": component_list,
+        "componentCount": filled,
+        "remark": clean(record.get("Remark")),
+        "animus": recommended,
+        "hasData": bool(filled or recommended or clean(record.get("Remark"))),
+    }
+
+
 def option_sort_key(build: dict):
     text = build.get("option", "")
     number = re.search(r"\d+", text)
@@ -510,11 +604,16 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
                 "edit core_data.xlsx in Excel to keep them."
             )
 
-    animus_art, matrices, shells, passives, elements, written = read_information(
-        workbook[SHEET_INFORMATION], images, xlsx_path
-    )
+    info = read_information(workbook[SHEET_INFORMATION], images, xlsx_path)
+    animus_art = info["animus"]
+    matrices = info["matrices"]
+    shells = info["shells"]
+    passives = info["passives"]
+    elements = info["elements"]
+    imprint_art = info["imprints"]
+    components = info["components"]
     if extract_images:
-        print(f"  wrote {len(written)} files into assets/")
+        print(f"  wrote {len(info['written'])} files into assets/")
 
     # ---- Build sheet ------------------------------------------------------
     build_rows = sheet_rows(workbook[SHEET_BUILD])
@@ -626,6 +725,47 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
             slots.append(slot)
         teams.append({"id": slugify(team_name), "name": team_name, "slots": slots})
 
+    # ---- Imprint sheet ----------------------------------------------------
+    imprints = []
+    if SHEET_IMPRINT in workbook.sheetnames:
+        sheet = workbook[SHEET_IMPRINT]
+        imprint_headers = sheet_headers(sheet)
+        imprint_rows = sheet_rows(sheet)
+        print(f"  {SHEET_IMPRINT}: {len(imprint_rows)} rows")
+        for index, record in enumerate(imprint_rows, start=1):
+            if not clean(record.get("Imprint")):
+                warn("an Imprint row has no name and was skipped")
+                continue
+            imprints.append(
+                make_imprint(
+                    record,
+                    imprint_headers,
+                    imprint_art,
+                    components,
+                    animus_by_key,
+                    index,
+                )
+            )
+        # Imprints that are on the Information sheet but have no row yet.
+        listed = {key(i["name"]) for i in imprints}
+        for k, art in imprint_art.items():
+            if k not in listed:
+                imprints.append(
+                    {
+                        "id": art["id"],
+                        "no": "",
+                        "name": art["name"],
+                        "card": art.get("icon", ""),
+                        "components": [],
+                        "componentCount": 0,
+                        "remark": "",
+                        "animus": [],
+                        "hasData": False,
+                    }
+                )
+    else:
+        print(f"  {SHEET_IMPRINT}: sheet not found, skipping")
+
     def strip_key(table: dict) -> dict:
         return {entry["id"]: entry for entry in table.values()}
 
@@ -637,14 +777,18 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
             "animusTotal": len(animus_list),
             "buildCount": len(build_rows),
             "teamCount": len(teams),
+            "imprintCount": len(imprints),
+            "imprintsWithData": sum(1 for i in imprints if i["hasData"]),
             "warnings": warnings,
         },
         "elements": strip_key(elements),
         "matrices": strip_key(matrices),
         "shells": strip_key(shells),
         "passives": strip_key(passives),
+        "components": strip_key(components),
         "animus": animus_list,
         "teams": teams,
+        "imprints": imprints,
     }
 
 
@@ -683,7 +827,8 @@ def main() -> None:
         f"Wrote {out_path.name} ({size_kb:.0f} KB) — "
         f"{meta['animusWithBuilds']} Animus with builds "
         f"of {meta['animusTotal']}, {meta['buildCount']} build rows, "
-        f"{meta['teamCount']} GVG teams"
+        f"{meta['teamCount']} GVG teams, "
+        f"{meta['imprintsWithData']} of {meta['imprintCount']} imprints filled in"
     )
     if warnings:
         print(f"Finished with {len(warnings)} warning(s) — see the list above.")

@@ -814,6 +814,116 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   font-size: 13.5px;
 }
 
+/* ------------------------------------------------------------ imprints --- */
+
+/* Imprint cards are item art rather than character portraits: a taller frame,
+   and the picture is contained instead of cropped so the card is never cut. */
+.roster-wide { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+
+.i-card .a-art {
+  aspect-ratio: 3 / 5;
+  background:
+    radial-gradient(85% 55% at 50% 30%, rgba(229, 180, 92, .14), transparent 70%),
+    var(--ink-2);
+}
+.i-card .a-art img { object-fit: contain; object-position: center; padding: 10px 10px 26px; }
+.i-card .a-art::after { background: linear-gradient(180deg, transparent 58%, rgba(10, 9, 18, .94) 100%); }
+.i-card::after { background: var(--gold); opacity: .4; }
+.i-card:hover { border-color: rgba(229, 180, 92, .42); }
+.i-card:hover .a-art img { transform: none; }
+.i-card .a-el-name { color: var(--text-dim); letter-spacing: .12em; }
+
+/* Detail: the four component columns from the workbook. */
+.p-art-item {
+  aspect-ratio: 3 / 5;
+  display: grid;
+  place-items: center;
+}
+.p-art-item img { width: 100%; height: 100%; object-fit: contain; padding: 10px; }
+
+.components {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 18px;
+}
+
+.component { min-width: 0; }
+
+.c-icon {
+  position: relative;
+  display: block;
+  width: 62px;
+  height: 62px;
+  overflow: hidden;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.c-icon img { width: 100%; height: 100%; object-fit: contain; }
+
+.c-name {
+  display: block;
+  margin: 10px 0 7px;
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.c-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.c-options li {
+  position: relative;
+  padding-left: 13px;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+.c-options li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .62em;
+  width: 5px;
+  height: 5px;
+  background: var(--gold);
+  opacity: .55;
+  transform: rotate(45deg);
+}
+
+/* Detail: the Animus this imprint is recommended for. */
+.recs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
+  gap: 12px;
+}
+
+.rec {
+  display: grid;
+  gap: 7px;
+  text-align: center;
+}
+.rec-art {
+  position: relative;
+  display: block;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color .2s ease, transform .2s ease;
+}
+.rec-art img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.rec-art .ph { font-size: 18px; }
+.rec:hover .rec-art {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.rec-name {
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--text-dim);
+}
+.rec:hover .rec-name { color: var(--text); }
+
 /* --------------------------------------------------------------- foot --- */
 
 .site-foot {
@@ -872,6 +982,13 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   .slot-info { padding: 10px 11px 11px; gap: 9px; }
   .slot-name { font-size: 14px; padding: 4px 8px 5px; }
   .slot-gear { gap: 7px; }
+}
+
+@media (max-width: 720px) {
+  .roster-wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .components { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .c-icon { width: 52px; height: 52px; }
+  .recs { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
 }
 
 @media (max-width: 420px) {

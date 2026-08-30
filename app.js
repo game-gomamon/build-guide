@@ -84,6 +84,20 @@
     });
   }
 
+  function imprintMatches(imprint, query) {
+    if (!query) return true;
+    if (norm(imprint.name).indexOf(query) > -1) return true;
+    if (norm(imprint.no).indexOf(query) > -1) return true;
+    var inComponents = imprint.components.some(function (c) {
+      return norm(c.name).indexOf(query) > -1 ||
+        c.options.some(function (o) { return norm(o).indexOf(query) > -1; });
+    });
+    if (inComponents) return true;
+    return imprint.animus.some(function (a) {
+      return norm(a.name).indexOf(query) > -1;
+    });
+  }
+
   /* ------------------------------------------------------------- toolbar -- */
 
   function searchBox(id, placeholder, value) {
@@ -388,6 +402,128 @@
       "</span></a>";
   }
 
+  /* ----------------------------------------------------- view: imprints -- */
+
+  var imprintState = { query: "" };
+
+  function imprints() {
+    return DATA.imprints || [];
+  }
+
+  function renderImprints() {
+    var query = norm(imprintState.query);
+    var all = imprints();
+    var list = all.filter(function (i) { return imprintMatches(i, query); });
+    var filled = (DATA.meta && DATA.meta.imprintsWithData) != null
+      ? DATA.meta.imprintsWithData
+      : all.filter(function (i) { return i.hasData; }).length;
+
+    view.innerHTML = '' +
+      '<div class="page-head">' +
+      '<p class="eyebrow">Section 03</p>' +
+      "<h1>Imprints</h1>" +
+      "<p>" + all.length + " imprints, " + filled +
+      " with recommended component options. Pick one to see its details.</p>" +
+      "</div>" +
+
+      '<div class="toolbar">' +
+      searchBox("imprint-search", "Search imprint, component option or Animus…", imprintState.query) +
+      '<span class="toolbar-note">Showing ' + list.length + " of " + all.length + "</span>" +
+      "</div>" +
+
+      (list.length
+        ? '<div class="roster roster-wide">' + list.map(imprintCard).join("") + "</div>"
+        : '<p class="empty"><strong>No imprint matches that search.</strong>' +
+          "Search by imprint name, a component option, or an Animus it suits.</p>");
+
+    var input = document.getElementById("imprint-search");
+    if (!input) return;
+    input.addEventListener("input", debounce(function () {
+      imprintState.query = input.value;
+      renderImprints();
+      var next = document.getElementById("imprint-search");
+      next.focus();
+      next.setSelectionRange(next.value.length, next.value.length);
+    }, 140));
+  }
+
+  function imprintCard(imprint) {
+    return '' +
+      '<a class="a-card i-card" href="#imprint/' + encodeURIComponent(imprint.id) + '">' +
+      '<span class="a-count' + (imprint.hasData ? "" : " is-empty") + '">' +
+      (imprint.hasData ? esc(imprint.no || "Imprint") : "No data") + "</span>" +
+      '<span class="a-art">' + art(imprint.card, imprint.name, initials(imprint.name)) + "</span>" +
+      '<span class="a-meta">' +
+      '<span class="a-name">' + esc(imprint.name) + "</span>" +
+      (imprint.animus.length
+        ? '<span class="a-el-name">' + imprint.animus.length + " Animus</span>"
+        : "") +
+      "</span></a>";
+  }
+
+  function renderImprintProfile(imprintId) {
+    var imprint = imprints().filter(function (i) { return i.id === imprintId; })[0];
+    if (!imprint) {
+      view.innerHTML = '<a class="back-link" href="#imprints">← All Imprints</a>' +
+        '<p class="empty"><strong>That imprint is not in the data.</strong>' +
+        "It may have been renamed in core_data.xlsx.</p>";
+      return;
+    }
+
+    view.innerHTML = '' +
+      '<a class="back-link" href="#imprints">← All Imprints</a>' +
+      '<div class="profile">' +
+
+      '<div class="p-side">' +
+      '<div class="p-art p-art-item">' + art(imprint.card, imprint.name, initials(imprint.name)) + "</div>" +
+      '<div class="p-id">' +
+      (has(imprint.no) ? '<p class="eyebrow">' + esc(imprint.no) + "</p>" : "") +
+      "<h1>" + esc(imprint.name) + "</h1></div>" +
+      "</div>" +
+
+      '<div class="p-main">' +
+      componentPanel(imprint) +
+      remarkPanel(imprint) +
+      recommendPanel(imprint) +
+      "</div></div>";
+  }
+
+  function componentPanel(imprint) {
+    var filled = imprint.components.filter(function (c) { return c.options.length; });
+    if (!filled.length) {
+      return '<section class="panel"><h2>Component option</h2>' +
+        "<p>No component options have been added for this imprint yet. Fill in its " +
+        "row on the <code>Imprint</code> sheet in core_data.xlsx and it will show " +
+        "up here.</p></section>";
+    }
+    var cells = imprint.components.map(function (c) {
+      var options = c.options.length
+        ? '<ul class="c-options">' + c.options.map(function (o) {
+            return "<li>" + esc(o) + "</li>";
+          }).join("") + "</ul>"
+        : '<p class="dash">—</p>';
+      return '<div class="component">' +
+        '<span class="c-icon">' + art(c.icon, c.name, "") + "</span>" +
+        '<span class="c-name">' + esc(c.name) + "</span>" +
+        options + "</div>";
+    }).join("");
+    return '<section class="panel"><h2>Component option</h2>' +
+      '<div class="components">' + cells + "</div></section>";
+  }
+
+  function recommendPanel(imprint) {
+    if (!imprint.animus.length) return "";
+    var cards = imprint.animus.map(function (a) {
+      var open = a.animusId ? "#build/" + encodeURIComponent(a.animusId) : "#builds";
+      return '<a class="rec" href="' + open + '"' +
+        (has(a.element) ? ' data-element="' + esc(a.element) + '"' : "") + ">" +
+        '<span class="rec-art">' + art(a.portrait || a.card, a.name, initials(a.name)) + "</span>" +
+        '<span class="rec-name">' + esc(a.name) + "</span></a>";
+    }).join("");
+    return '<section class="panel"><h2>Recommended for Animus</h2>' +
+      '<div class="recs">' + cards + "</div></section>";
+  }
+
   /* ------------------------------------------------------------- router -- */
 
   function setActiveTab(section) {
@@ -411,6 +547,12 @@
     } else if (head === "gvg") {
       setActiveTab("gvg");
       renderGVG(parts[1]);
+    } else if (head === "imprint" && parts[1]) {
+      setActiveTab("imprints");
+      renderImprintProfile(parts[1]);
+    } else if (head === "imprints") {
+      setActiveTab("imprints");
+      renderImprints();
     } else {
       setActiveTab("builds");
       renderBuilds();
@@ -430,7 +572,8 @@
       DATA = data;
       document.getElementById("foot-meta").textContent =
         "Data built " + data.meta.generated + " · " + data.meta.buildCount +
-        " builds · " + data.meta.teamCount + " GVG teams";
+        " builds · " + data.meta.teamCount + " GVG teams · " +
+        (data.imprints || []).length + " imprints";
       window.addEventListener("hashchange", route);
       route();
     })

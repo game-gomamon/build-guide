@@ -20,6 +20,7 @@ never need to touch the HTML, CSS, or JavaScript to add data.
 | --- | --- |
 | **Builds** | Search Animus by name or element, filter by element, open a profile, switch between build options |
 | **GVG Teams** | Every recommended composition, searchable by team name *or* by an Animus inside the team. Tap any Animus to jump to its build |
+| **Imprints** | Every imprint from the `Imprint` sheet. Open one to see its four component option columns, its remark, and the Animus it is recommended for. Searchable by imprint name, by a component option such as `Effect ACC`, or by an Animus name. Tap a recommended Animus to jump to its build |
 | **Codex** | Reference lists from the `Information` sheet — Matrices with their node counts, Shells, Shell Passives, Elements — plus any warnings from the last build |
 
 Every view has its own URL, so you can bookmark or share one:
@@ -30,6 +31,8 @@ Every view has its own URL, so you can bookmark or share one:
 #build/areal/2          ← straight to Option 2
 #gvg
 #gvg/holyship-1
+#imprints
+#imprint/sentinel
 #info
 ```
 
@@ -105,10 +108,37 @@ Team names are free text — `HolyShip #1`, `Rush comp`, anything. The site neve
 assumes a numbering scheme. If you ever add a `D_animus` column set, the build
 script picks up the fourth slot automatically.
 
+### `Imprint`
+
+One row per imprint.
+
+| Column | Notes |
+| --- | --- |
+| `No` | Free text badge, e.g. `Imprint #1`. Optional |
+| `Imprint` | The name. Must match a name in the `Information` sheet to get artwork |
+| `Offensive` / `Defensive` / `Vitality` / `Velocity` | Comma-separated; each entry becomes its own line under that component |
+| `Remark` | Free text, Thai is fine |
+| `Recommend Animus` | Comma-separated Animus names. Each one becomes a portrait that links to that Animus's build |
+
+**The four component columns are not hardcoded.** Any column that is not `No`,
+`Imprint`, `Remark`, or `Recommend Animus` is treated as a component, in the
+order the columns appear in the sheet. Add a fifth component column, add a
+matching row under `Component` on the `Information` sheet for its icon, and it
+shows up on its own.
+
+Rows you have not filled in yet are fine. Cells that still hold a formula error
+such as `#N/A` are read as empty, and the imprint is listed with a **No data**
+badge until you fill it in.
+
 ### `Information`
 
 Lookup tables used for artwork, icons, and Matrix node counts. Add a row here
-first whenever a new Animus, Matrix, Shell, or Passive enters the game.
+first whenever a new Animus, Matrix, Shell, Passive, Imprint, or Component
+enters the game.
+
+The `Imprint` block holds each imprint's name and its card picture. The
+`Component` block holds the four component names — `Offensive`, `Defensive`,
+`Vitality`, `Velocity` — and their icons.
 
 ---
 
