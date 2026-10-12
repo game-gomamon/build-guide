@@ -682,8 +682,8 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
     for index, record in enumerate(gvg_rows, start=1):
         team_name = clean(record.get("Team")) or f"Team {index}"
         slots = []
-        # Slot prefixes are discovered from the headers, so a 4th slot ("D_")
-        # would be picked up automatically.
+        # Columns: Team, A_animus, B_animus, C_animus, Remark. Slot prefixes are
+        # discovered from the headers, so a D_animus column is picked up too.
         prefixes = sorted(
             {
                 h.split("_")[0]
@@ -704,26 +704,17 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
                 "portrait": ref.get("portrait", "") if ref else "",
                 "card": ref.get("card", "") if ref else "",
                 "element": ref.get("element", "") if ref else "",
-                "matrices": [],
+                "elementIcon": ref.get("elementIcon", "") if ref else "",
             }
-            for n in (1, 2, 3):
-                matrix_name = clean(record.get(f"{prefix}_Matrix_{n}"))
-                if not matrix_name:
-                    continue
-                item = {"name": matrix_name}
-                mref = matrices.get(key(matrix_name))
-                if mref and mref.get("icon"):
-                    item["icon"] = mref["icon"]
-                slot["matrices"].append(item)
-            shell_name = clean(record.get(f"{prefix}_Shell"))
-            if shell_name:
-                sref = shells.get(key(shell_name))
-                slot["shell"] = {
-                    "name": shell_name,
-                    "icon": sref.get("icon", "") if sref else "",
-                }
             slots.append(slot)
-        teams.append({"id": slugify(team_name), "name": team_name, "slots": slots})
+        teams.append(
+            {
+                "id": slugify(team_name),
+                "name": team_name,
+                "slots": slots,
+                "remark": clean(record.get("Remark")),
+            }
+        )
 
     # ---- Imprint sheet ----------------------------------------------------
     imprints = []

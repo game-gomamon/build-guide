@@ -681,7 +681,11 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
 
 /* --------------------------------------------------------------- gvg --- */
 
-.teams { display: grid; gap: 16px; }
+.teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
 
 .team {
   padding: 15px 16px 16px;
@@ -699,7 +703,7 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   display: flex;
   align-items: baseline;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 .team-head h2 {
   margin: 0;
@@ -708,110 +712,94 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   font-weight: 700;
   letter-spacing: .03em;
 }
-.team-head .eyebrow { margin-left: auto; }
 
+/* Three Animus side by side, each a small portrait card. */
 .slots {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
-/* One slot = full-height artwork on the left, identity + gear on the right. */
 .slot {
-  display: grid;
-  grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
-  align-items: stretch;
-  min-height: 196px;
+  position: relative;
+  display: block;
   overflow: hidden;
   background: var(--ink-2);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   transition: border-color .18s, transform .18s;
 }
+.slot::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: .6;
+}
 .slot:hover {
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
+.slot .a-el { top: 6px; left: 6px; width: 22px; height: 22px; padding: 2px; }
 
 .slot-art {
   position: relative;
+  display: block;
+  aspect-ratio: 3 / 4;
   overflow: hidden;
-  background: var(--ink);
-  border-right: 1px solid var(--line);
+  background:
+    radial-gradient(90% 60% at 50% 18%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+    var(--ink);
 }
-/* Absolute fill, so the art column takes its height from the gear column. */
 .slot-art .art-img {
-  position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: 50% 12%;
 }
-.slot-art .ph { font-size: 22px; }
-
-.slot-info {
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-  min-width: 0;
-  padding: 12px 13px 13px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%);
+.slot-art::after {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, transparent 50%, rgba(10, 9, 18, .94) 100%);
 }
+.slot-art .ph { font-size: 20px; }
 
 .slot-name {
-  align-self: flex-start;
-  max-width: 100%;
-  padding: 5px 10px 6px;
+  position: absolute;
+  z-index: 3;
+  left: 0; right: 0; bottom: 0;
+  padding: 8px 9px 9px;
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.15;
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  border-radius: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .slot-name span {
   display: block;
   margin-top: 1px;
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 500;
   letter-spacing: .14em;
   text-transform: uppercase;
+  color: var(--accent);
+}
+
+.team-remark {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
   color: var(--text-dim);
-}
-
-.slot-gear { display: grid; gap: 9px; min-width: 0; }
-
-.gear-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  min-width: 0;
-}
-.gear-row img { flex: none; width: 24px; height: 24px; object-fit: contain; }
-.gear-row .ph-mini {
-  flex: none;
-  width: 24px; height: 24px;
-  border: 1px dashed var(--line);
-  border-radius: 4px;
-}
-.gear-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.gear-shell {
-  margin-top: 2px;
-  padding-top: 9px;
-  border-top: 1px solid var(--line-soft);
-}
-.gear-shell img { width: 28px; height: 28px; }
-.gear-shell span {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 13.5px;
+  background: rgba(0, 0, 0, .26);
+  border-left: 2px solid var(--gold);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
 }
 
 /* ------------------------------------------------------------ imprints --- */
@@ -961,7 +949,7 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
 
   .roster { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 
-  .slots { grid-template-columns: 1fr; }
+  .teams { grid-template-columns: 1fr; }
   .toolbar-note { margin-left: 0; width: 100%; }
   .view { padding-top: 18px; }
   .opt { flex: 1 1 40%; }
@@ -976,12 +964,7 @@ code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size:
   .p-art { max-width: none; }
   .p-id { margin-top: 0; }
   .options { grid-column: 1 / -1; margin-top: 4px; }
-
-  /* GVG: same pattern, just a narrower art column. */
-  .slot { grid-template-columns: 116px minmax(0, 1fr); min-height: 0; }
-  .slot-info { padding: 10px 11px 11px; gap: 9px; }
-  .slot-name { font-size: 14px; padding: 4px 8px 5px; }
-  .slot-gear { gap: 7px; }
+}
 }
 
 @media (max-width: 720px) {

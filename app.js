@@ -79,6 +79,7 @@
   function teamMatches(team, query) {
     if (!query) return true;
     if (norm(team.name).indexOf(query) > -1) return true;
+    if (norm(team.remark).indexOf(query) > -1) return true;
     return team.slots.some(function (slot) {
       return norm(slot.name).indexOf(query) > -1;
     });
@@ -373,32 +374,24 @@
       '" id="team-' + esc(team.id) + '">' +
       '<div class="team-head"><h2>' + esc(team.name) + "</h2></div>" +
       '<div class="slots">' + team.slots.map(teamSlot).join("") + "</div>" +
+      (has(team.remark)
+        ? '<p class="team-remark">' + esc(team.remark) + "</p>"
+        : "") +
       "</article>";
   }
 
   function teamSlot(slot) {
-    var matrices = [0, 1, 2].map(function (i) {
-      var m = slot.matrices[i];
-      if (!m) return '<span class="gear-row"><span class="ph-mini"></span><span class="dash">—</span></span>';
-      return '<span class="gear-row">' + icon(m.icon, "") + "<span>" + esc(m.name) + "</span></span>";
-    }).join("");
-
-    var shell = slot.shell
-      ? '<span class="gear-row gear-shell">' + icon(slot.shell.icon, "") +
-        "<span>" + esc(slot.shell.name) + "</span></span>"
-      : '<span class="gear-row gear-shell"><span class="ph-mini"></span><span class="dash">—</span></span>';
-
     var open = slot.animusId ? "#build/" + encodeURIComponent(slot.animusId) : "#gvg";
 
     return '' +
       '<a class="slot" href="' + open + '"' +
       (has(slot.element) ? ' data-element="' + esc(slot.element) + '"' : "") + ">" +
+      (has(slot.elementIcon)
+        ? '<img class="a-el" src="' + esc(slot.elementIcon) + '" alt="' + esc(slot.element) + '" loading="lazy">'
+        : "") +
       '<span class="slot-art">' + art(slot.card || slot.portrait, slot.name, initials(slot.name)) + "</span>" +
-      '<span class="slot-info">' +
       '<span class="slot-name">' + esc(slot.name) +
       (has(slot.element) ? "<span>" + esc(slot.element) + "</span>" : "") +
-      "</span>" +
-      '<span class="slot-gear">' + matrices + shell + "</span>" +
       "</span></a>";
   }
 
