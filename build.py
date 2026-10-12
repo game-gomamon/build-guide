@@ -4,7 +4,7 @@ build.py — turns core_data.xlsx into the static site's data.
 
 What it does
 ------------
-1. Reads the sheets: Information, Build, GVG_team, Imprint.
+1. Reads the sheets: Information, Animus, Build, GVG_team, Imprint.
 2. Extracts every picture that is stored *inside a cell* on the Information
    sheet (Excel's "Place in Cell" images) and writes it to assets/.
 3. Writes data.json, which is the only file the website loads.
@@ -55,6 +55,7 @@ SHEET_INFORMATION = "Information"
 SHEET_BUILD = "Build"
 SHEET_GVG = "GVG_team"
 SHEET_IMPRINT = "Imprint"
+SHEET_ANIMUS = "Animus"
 
 # Where each kind of extracted picture lands, and how wide it may be.
 IMAGE_TARGETS = {
@@ -615,6 +616,36 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
     if extract_images:
         print(f"  wrote {len(info['written'])} files into assets/")
 
+    # ---- Animus sheet -----------------------------------------------------
+    # One row per Animus: its name and its element. This is where every
+    # Animus gets its element, whether or not it has a build yet.
+    def element_name(value: str) -> str:
+        """Spell the element exactly as the Information sheet does."""
+        ref = elements.get(key(value))
+        return ref["name"] if ref else value
+
+    animus_element: dict[str, str] = {}
+    animus_sheet_order: list[tuple[str, str]] = []
+    if SHEET_ANIMUS in workbook.sheetnames:
+        animus_rows = sheet_rows(workbook[SHEET_ANIMUS])
+        print(f"  {SHEET_ANIMUS}: {len(animus_rows)} rows")
+        for record in animus_rows:
+            name = clean(record.get("Animus"))
+            if not name:
+                continue
+            element = element_name(clean(record.get("Element")))
+            if not element:
+                warn(f"Animus sheet: '{name}' has no Element")
+            elif not elements.get(key(element)):
+                warn(f"Animus sheet: element '{element}' for '{name}' is not on the Information sheet")
+            if element:
+                animus_element[key(name)] = element
+            animus_sheet_order.append((key(name), name))
+            if key(name) not in animus_art:
+                warn(f"Animus sheet: '{name}' is not on the Information sheet, so it has no artwork")
+    else:
+        print(f"  {SHEET_ANIMUS}: sheet not found, using the Element column of {SHEET_BUILD}")
+
     # ---- Build sheet ------------------------------------------------------
     build_rows = sheet_rows(workbook[SHEET_BUILD])
     print(f"  {SHEET_BUILD}: {len(build_rows)} rows")
@@ -642,6 +673,19 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
             order.append(k)
         by_animus[k]["builds"].append(make_build(record, matrices, shells, passives))
 
+    # Animus listed on the Animus sheet but nowhere else yet.
+    for k, name in animus_sheet_order:
+        if k not in by_animus and k not in animus_art:
+            by_animus[k] = {
+                "id": slugify(name),
+                "name": name,
+                "element": "",
+                "portrait": "",
+                "card": "",
+                "builds": [],
+            }
+            order.append(k)
+
     # Animus listed on Information but without any build row yet.
     for k, art in animus_art.items():
         if k not in by_animus:
@@ -659,11 +703,16 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
     for k in order:
         entry = by_animus[k]
         entry["builds"].sort(key=option_sort_key)
-        # Element comes from the builds; blank when there is no build yet.
+        # Element comes from the Animus sheet. Workbooks without that sheet
+        # (or Animus missing from it) fall back to the Build sheet's column.
+        entry["element"] = animus_element.get(k, "")
+        if not entry["element"]:
+            for build in entry["builds"]:
+                if build["element"]:
+                    entry["element"] = element_name(build["element"])
+                    break
         for build in entry["builds"]:
-            if build["element"]:
-                entry["element"] = build["element"]
-                break
+            build["element"] = entry["element"]
         element_ref = elements.get(key(entry["element"]))
         if entry["element"] and not element_ref:
             warn(f"element '{entry['element']}' is not on the Information sheet")
@@ -766,6 +815,7 @@ def build_payload(xlsx_path: Path, extract_images: bool) -> dict:
             "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "animusWithBuilds": sum(1 for a in animus_list if a["buildCount"]),
             "animusTotal": len(animus_list),
+            "animusWithElement": sum(1 for a in animus_list if a["element"]),
             "buildCount": len(build_rows),
             "teamCount": len(teams),
             "imprintCount": len(imprints),

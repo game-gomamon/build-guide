@@ -21,6 +21,7 @@ never need to touch the HTML, CSS, or JavaScript to add data.
 | **Builds** | Search Animus by name or element, filter by element, open a profile, switch between build options |
 | **GVG Teams** | Every recommended composition — team name, its three Animus, and its remark. Searchable by team name, an Animus inside the team, or remark text. Tap any Animus to jump to its build |
 | **Imprints** | Every imprint from the `Imprint` sheet. Open one to see its four component option columns, its remark, and the Animus it is recommended for. Searchable by imprint name, by a component option such as `Effect ACC`, or by an Animus name. Tap a recommended Animus to jump to its build |
+| **GVG Draft** | Defence team drafter. Choose a tower type — **Yellow** or **Red** (5 teams) or **Purple** or **White** (4 teams), 3 Animus per team — then drag portraits from the pool on the left into team slots. On a phone, tap a portrait to fill the next empty slot, or press and hold to drag. Tap a slot first to choose where the next pick goes. An Animus can be used only once per tower; picked ones are greyed out with their team number. Drag a placed Animus onto another slot to swap, or back onto the pool to remove it. When every slot is filled, **Export image** saves the draft as a PNG. Each tower's draft is remembered in that browser |
 | **Codex** | Reference lists from the `Information` sheet — Matrices with their node counts, Shells, Shell Passives, Elements — plus any warnings from the last build |
 
 Every view has its own URL, so you can bookmark or share one:
@@ -33,6 +34,7 @@ Every view has its own URL, so you can bookmark or share one:
 #gvg/holyship-1
 #imprints
 #imprint/sentinel
+#draft
 #info
 ```
 
@@ -86,7 +88,6 @@ profile page shows a tab for each, in numeric order.
 | --- | --- |
 | `Animus` | Must match a name in the `Information` sheet to get artwork |
 | `Option` | `1`, `2`, `3`… Sorted numerically. Only one option means no tabs are shown |
-| `Element` | `constant`, `disorder`, `hollow`, `odd`, `reason` — drives the accent colour |
 | `Skill` | Comma-separated, e.g. `5,5,5` |
 | `Matrix_1` … `Matrix_3` | Matrix names |
 | `Matrix_Fill` | Comma-separated, e.g. `12,8,6` — paired with each Matrix in order |
@@ -98,6 +99,20 @@ profile page shows a tab for each, in numeric order.
 `Matrix_Fill` is shown against each Matrix's total node count from the
 `Information` sheet, so `12,8,6` on Bloodbath / Bulwark / Evolguard renders as
 `12 / 12`, `8 / 8`, `6 / 6` with a fill meter under each name.
+
+Each Animus's element comes from the `Animus` sheet, not from this sheet.
+
+### `Animus`
+
+One row per Animus, so every Animus has an element even before it has a build.
+
+| Column | Notes |
+| --- | --- |
+| `Animus` | Same spelling as the `Information` sheet, so the artwork matches |
+| `Element` | `constant`, `disorder`, `hollow`, `odd`, `reason` — drives the accent colour, the element badge, and the element filters on **Builds** and **GVG Draft**. Capitals don't matter |
+
+Older workbooks without this sheet still build: the script then falls back to an
+`Element` column on the `Build` sheet, if there is one.
 
 ### `GVG_team`
 
@@ -209,7 +224,7 @@ Make sure `core_data.xlsx` is committed — the workflow builds from it.
 ```
 ├── index.html                  page shell and navigation
 ├── style.css                   all styling
-├── app.js                      routing, rendering, search
+├── app.js                      routing, rendering, search, GVG draft
 ├── build.py                    reads the workbook, writes data.json and assets/
 ├── core_data.xlsx              your data — the only file you normally edit
 ├── data.json                   generated; safe to delete and rebuild

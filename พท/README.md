@@ -19,7 +19,7 @@ never need to touch the HTML, CSS, or JavaScript to add data.
 | Section | What it does |
 | --- | --- |
 | **Builds** | Search Animus by name or element, filter by element, open a profile, switch between build options |
-| **GVG Teams** | Every recommended composition, searchable by team name *or* by an Animus inside the team. Tap any Animus to jump to its build |
+| **GVG Teams** | Every recommended composition — team name, its three Animus, and its remark. Searchable by team name, an Animus inside the team, or remark text. Tap any Animus to jump to its build |
 | **Imprints** | Every imprint from the `Imprint` sheet. Open one to see its four component option columns, its remark, and the Animus it is recommended for. Searchable by imprint name, by a component option such as `Effect ACC`, or by an Animus name. Tap a recommended Animus to jump to its build |
 | **Codex** | Reference lists from the `Information` sheet — Matrices with their node counts, Shells, Shell Passives, Elements — plus any warnings from the last build |
 
@@ -101,12 +101,17 @@ profile page shows a tab for each, in numeric order.
 
 ### `GVG_team`
 
-One row per team. Columns are `Team`, then `A_animus`, `A_Matrix_1..3`,
-`A_Shell`, and the same for `B_` and `C_`.
+One row per team.
 
-Team names are free text — `HolyShip #1`, `Rush comp`, anything. The site never
-assumes a numbering scheme. If you ever add a `D_animus` column set, the build
-script picks up the fourth slot automatically.
+| Column | Notes |
+| --- | --- |
+| `Team` | Free text — `GVG #1`, `Rush comp`, anything. The site never assumes a numbering scheme |
+| `A_animus` / `B_animus` / `C_animus` | Animus names (dropdown from the `Information` sheet). Each one links to that Animus's build |
+| `Remark` | Free text, Thai is fine. Shown under the team; hidden when empty |
+
+Gear for each Animus lives on its build page, so the team list shows only the
+three Animus. If you ever add a `D_animus` column, the build script picks up the
+fourth slot automatically.
 
 ### `Imprint`
 
