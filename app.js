@@ -893,10 +893,10 @@
       hint = "Draft complete. Export it as a picture to share with your guild.";
     } else if (filled) {
       hint = missing + (missing === 1 ? " Animus still needs " : " Animus still need ") + gearNeed() +
-        ". Tap the gear row under a portrait to set it.";
+        ". Tap the gear row under a portrait to set it, or export the draft as it is.";
     } else {
       hint = "Drag a portrait into a slot, or tap a portrait to fill the next empty slot. " +
-        "Tap a slot first to choose where the next pick goes." +
+        "Tap a slot first to choose where the next pick goes. You can export at any time; empty slots show as blank." +
         (withGear ? " Tap the gear row under a portrait to change its " +
           (draft.mode.matrix ? "Shell and Matrix." : "Shell.") : "");
     }
@@ -908,9 +908,8 @@
       '<span class="board-count' + (done ? " is-done" : "") + '">' + placed + " / " + total + "</span></div>" +
       '<div class="board-actions">' +
       '<button type="button" class="btn" data-clear' + (placed ? "" : " disabled") + ">Clear</button>" +
-      '<button type="button" class="btn btn-gold" data-export' + (done ? "" : " disabled") +
-      ' title="' + (done ? "Save the draft as a picture"
-        : filled ? "Give every Animus " + gearNeed() + " to export" : "Fill every slot to export") + '">' +
+      '<button type="button" class="btn btn-gold" data-export' + (placed ? "" : " disabled") +
+      ' title="' + (placed ? "Save the draft as a picture" : "Place at least one Animus to export") + '">' +
       "Export image</button>" +
       "</div></div>" +
       '<div class="board-modes" role="group" aria-label="Gear to draft">' +
@@ -1557,7 +1556,8 @@
     var imageFor = {};
     board.forEach(function (team) {
       team.forEach(function (id) {
-        var a = animusById(id);
+        var a = id ? animusById(id) : null;
+        if (!a) return; // empty slot: nothing to load
         jobs.push(loadImage(a.card || a.portrait).then(function (img) { imageFor[id] = img; }));
         if (a.elementIcon && !imageFor["el:" + a.element]) {
           imageFor["el:" + a.element] = true;
@@ -1685,8 +1685,29 @@
         ctx.fillText(String(t + 1).padStart(2, "0"), PAD + 16, y + 72);
 
         team.forEach(function (id, s) {
-          var a = animusById(id);
+          var a = id ? animusById(id) : null;
           var x = PAD + LABEL_W + 12 + s * (CARD_W + GAP);
+
+          if (!a) {
+            // Empty slot: a dashed outline with a muted label.
+            roundRect(ctx, x + 0.5, y + 0.5, CARD_W - 1, CARD_H - 1, 8);
+            ctx.fillStyle = "rgba(15,13,27,0.6)";
+            ctx.fill();
+            ctx.save();
+            ctx.setLineDash([6, 5]);
+            ctx.strokeStyle = "rgba(190,180,255,0.22)";
+            ctx.stroke();
+            ctx.restore();
+            ctx.fillStyle = "#7E779A";
+            ctx.textAlign = "center";
+            ctx.font = '300 34px "Chakra Petch", sans-serif';
+            ctx.fillText("+", x + CARD_W / 2, y + CARD_H / 2 + 4);
+            ctx.font = '600 10.5px "Chakra Petch", sans-serif';
+            ctx.fillText("EMPTY", x + CARD_W / 2, y + CARD_H / 2 + 26);
+            ctx.textAlign = "left";
+            return;
+          }
+
           var hue = ELEMENT_HUES[norm(a.element)] || "#8F86B8";
 
           ctx.save();
@@ -1745,10 +1766,6 @@
       ctx.fillStyle = "#7E779A";
       ctx.font = '600 10.5px "Chakra Petch", sans-serif';
       drawSpaced(ctx, "ETHERIA RESTART · DATABASE", PAD, H - PAD + 4, 2.5);
-      ctx.textAlign = "right";
-      ctx.font = '500 11px "Anuphan", sans-serif';
-      ctx.fillText(location.host || "", W - PAD, H - PAD + 4);
-      ctx.textAlign = "left";
 
       var filename = "gvg-draft-" + tower.id + "-" + localDate() + ".png";
       return new Promise(function (resolve) {
