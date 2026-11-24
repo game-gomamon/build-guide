@@ -908,8 +908,7 @@
       '<span class="board-count' + (done ? " is-done" : "") + '">' + placed + " / " + total + "</span></div>" +
       '<div class="board-actions">' +
       '<button type="button" class="btn" data-clear' + (placed ? "" : " disabled") + ">Clear</button>" +
-      '<button type="button" class="btn btn-gold" data-export' + (placed ? "" : " disabled") +
-      ' title="' + (placed ? "Save the draft as a picture" : "Place at least one Animus to export") + '">' +
+      '<button type="button" class="btn btn-gold" data-export title="Save the draft as a picture — empty slots and missing gear are shown as blanks">' +
       "Export image</button>" +
       "</div></div>" +
       '<div class="board-modes" role="group" aria-label="Gear to draft">' +
@@ -1528,11 +1527,34 @@
     constant: "#E3C54B", disorder: "#A874F0", hollow: "#46C6AC", odd: "#6E8AF5", reason: "#E8586C"
   };
 
+  /*
+   * Export always works, whatever state the draft is in: empty teams, empty
+   * slots, an Animus with no Shell, or fewer than 2 Matrix. Anything missing
+   * is drawn as a blank outline or "—" so a half-finished plan can be shared.
+   */
   function exportDraft() {
+    var button = view.querySelector("[data-export]");
+    if (button && button.disabled) return;
+    if (button) { button.disabled = true; button.textContent = "Preparing…"; }
+    function resetButton() {
+      var again = view.querySelector("[data-export]");
+      if (again) { again.disabled = false; again.textContent = "Export image"; }
+    }
+    try {
+      exportDraftImage().catch(function (error) {
+        toast("Could not create the image: " + (error && error.message || error));
+      }).then(resetButton);
+    } catch (error) {
+      toast("Could not create the image: " + (error && error.message || error));
+      resetButton();
+    }
+  }
+
+  function exportDraftImage() {
     var tower = currentTower();
     var board = currentBoard();
-    var button = view.querySelector("[data-export]");
-    if (button) { button.disabled = true; button.textContent = "Preparing…"; }
+    var placedTotal = placedCount(board);
+    var slotTotal = board.length * TEAM_SIZE;
 
     // Layout, in CSS pixels. The canvas is drawn at 2× for a sharp picture.
     var S = 2, PAD = 36, LABEL_W = 92, CARD_W = 150, CARD_H = 200, GAP = 12;
@@ -1566,9 +1588,13 @@
         if (!withShell) return;
         var gear = gearFor(id);
         var wanted = [];
-        if (gear.shell) wanted.push(["sh:" + gear.shell, shellById(gear.shell).icon]);
+        var sh = gear.shell ? shellById(gear.shell) : null;
+        if (sh && sh.icon) wanted.push(["sh:" + sh.id, sh.icon]);
         if (withMatrix) {
-          gear.matrices.forEach(function (m) { wanted.push(["mx:" + m.id, matrixById(m.id).icon]); });
+          gear.matrices.forEach(function (m) {
+            var ref = matrixById(m.id);
+            if (ref && ref.icon) wanted.push(["mx:" + ref.id, ref.icon]);
+          });
         }
         wanted.forEach(function (w) {
           if (imageFor[w[0]]) return;
@@ -1588,23 +1614,39 @@
       var gear = gearFor(id);
       var shell = gear.shell ? shellById(gear.shell) : null;
 
-      roundRect(ctx, x, gy, 26, 26, 5);
+      roundRect(ctx, x + 0.5, gy + 0.5, 25, 25, 5);
       ctx.fillStyle = "rgba(0,0,0,0.38)";
       ctx.fill();
-      ctx.strokeStyle = "rgba(190,180,255,0.14)";
+      ctx.save();
+      if (!shell) ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = shell ? "rgba(190,180,255,0.14)" : "rgba(190,180,255,0.26)";
       ctx.stroke();
+      ctx.restore();
       var shellImg = shell && gearImage("sh:" + shell.id);
       if (shellImg) ctx.drawImage(shellImg, x + 2, gy + 2, 22, 22);
       ctx.fillStyle = shell ? "#ECE9F6" : "#7E779A";
       ctx.font = '600 12.5px "Chakra Petch", sans-serif';
-      ctx.fillText(fitText(ctx, shell ? shell.name : "—", CARD_W - 34), x + 33, gy + 17.5);
+      ctx.fillText(fitText(ctx, shell ? shell.name : "— No Shell", CARD_W - 34), x + 33, gy + 17.5);
 
       if (!withMatrix) return;
       for (var i = 0; i < MATRIX_MAX; i++) {
         var my = gy + SHELL_H + 4 + i * MX_H;
         var m = gear.matrices[i];
         var ref = m ? matrixById(m.id) : null;
-        if (!ref) continue;
+        if (!ref) {
+          // Missing Matrix: a dashed square plus "—" (the optional 3rd stays quiet).
+          if (i >= MATRIX_MIN && gear.matrices.length >= MATRIX_MIN) continue;
+          roundRect(ctx, x + 4.5, my + 0.5, 16, 16, 3);
+          ctx.save();
+          ctx.setLineDash([2, 2]);
+          ctx.strokeStyle = "rgba(190,180,255,0.24)";
+          ctx.stroke();
+          ctx.restore();
+          ctx.fillStyle = "#7E779A";
+          ctx.font = '500 11px "Anuphan", sans-serif';
+          ctx.fillText(i < MATRIX_MIN ? "— No Matrix" : "— Optional", x + 27, my + 13);
+          continue;
+        }
         var img = gearImage("mx:" + ref.id);
         if (img) ctx.drawImage(img, x + 4, my, 17, 17);
         var full = matrixFull(ref);
@@ -1626,7 +1668,7 @@
       }
     }
 
-    Promise.all([fontsReady].concat(jobs)).then(function () {
+    return Promise.all([fontsReady].concat(jobs)).then(function () {
       var canvas = document.createElement("canvas");
       canvas.width = W * S;
       canvas.height = H * S;
@@ -1662,6 +1704,15 @@
       ctx.font = '500 12px "Anuphan", sans-serif';
       ctx.fillText(new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
         W - PAD, PAD + 36);
+      // Progress, so a shared half-finished draft is clearly marked as such.
+      var gearGaps = gearMissing(board);
+      var status = placedTotal === slotTotal && !gearGaps
+        ? "COMPLETE"
+        : "IN PROGRESS · " + placedTotal + " / " + slotTotal + " PLACED" +
+          (gearGaps ? " · " + gearGaps + " NEED GEAR" : "");
+      ctx.fillStyle = placedTotal === slotTotal && !gearGaps ? tower.color : "#E5B45C";
+      ctx.font = '700 11px "Chakra Petch", sans-serif';
+      ctx.fillText(status, W - PAD, PAD + 56);
       ctx.textAlign = "left";
 
       // Teams
@@ -1705,6 +1756,15 @@
             ctx.font = '600 10.5px "Chakra Petch", sans-serif';
             ctx.fillText("EMPTY", x + CARD_W / 2, y + CARD_H / 2 + 26);
             ctx.textAlign = "left";
+            if (withShell) {
+              // Blank gear area under an empty slot, so the row stays aligned.
+              roundRect(ctx, x + 0.5, y + CARD_H + 8.5, CARD_W - 1, GEAR_H - 9, 6);
+              ctx.save();
+              ctx.setLineDash([4, 4]);
+              ctx.strokeStyle = "rgba(190,180,255,0.12)";
+              ctx.stroke();
+              ctx.restore();
+            }
             return;
           }
 
@@ -1782,13 +1842,8 @@
         link.click();
         link.remove();
         if (url.indexOf("blob:") === 0) setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-        toast("Saved " + filename);
+        toast("Saved " + filename + (placedTotal < slotTotal ? " (draft in progress)" : ""));
       });
-    }).catch(function (error) {
-      toast("Could not create the image: " + error.message);
-    }).then(function () {
-      var again = view.querySelector("[data-export]");
-      if (again) { again.disabled = false; again.textContent = "Export image"; }
     });
   }
 
