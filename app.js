@@ -533,19 +533,38 @@
     { id: "white",  name: "White",  teams: 4, color: "#E9E6F2" }
   ];
   var TEAM_SIZE = 3;
+  var MATRIX_MIN = 2;
+  var MATRIX_MAX = 3;
   var DRAFT_KEY = "etheria.gvgDraft.v1";
 
   var draft = loadDraft();
   var draftUI = { query: "", element: "", hideUsed: false, target: null };
+  var gearUI = { animusId: null, pos: null };
   var drag = null;
   var suppressClick = false;
 
+  /*
+   * draft.mode  — which gear is drafted alongside each Animus:
+   *               { shell: false, matrix: false }  Animus only
+   *               { shell: true,  matrix: false }  Animus + Shell
+   *               { shell: true,  matrix: true  }  Animus + Shell + 2–3 Matrix
+   * draft.gear  — per tower, keyed by Animus id, so gear follows an Animus
+   *               when it is swapped to another slot:
+   *               { yellow: { areal: { shell: "halloween",
+   *                                     matrices: [{ id: "bloodbath", fill: 12 }] } } }
+   */
   function loadDraft() {
-    var empty = { tower: "", boards: {} };
+    var empty = { tower: "", boards: {}, gear: {}, mode: { shell: false, matrix: false } };
     try {
       var raw = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
       if (raw && typeof raw === "object" && raw.boards && typeof raw.boards === "object") {
-        return { tower: String(raw.tower || ""), boards: raw.boards };
+        var matrix = !!(raw.mode && raw.mode.matrix);
+        return {
+          tower: String(raw.tower || ""),
+          boards: raw.boards,
+          gear: raw.gear && typeof raw.gear === "object" ? raw.gear : {},
+          mode: { shell: matrix || !!(raw.mode && raw.mode.shell), matrix: matrix }
+        };
       }
     } catch (e) { /* storage blocked or corrupt — start fresh */ }
     return empty;
@@ -614,9 +633,121 @@
 
   function teamLabel(t) { return "Team " + (t + 1); }
 
+  /* ---- gear: shell and matrix per Animus ---- */
+
+  function gearOn() { return !!draft.mode.shell; }
+
+  function shellById(id) { return (DATA.shells && DATA.shells[id]) || null; }
+  function matrixById(id) { return (DATA.matrices && DATA.matrices[id]) || null; }
+  function matrixFull(m) {
+    var n = parseInt(m && m.full, 10);
+    return n > 0 ? n : 0;
+  }
+
+  function towerGear() {
+    var tower = currentTower();
+    if (!tower) return {};
+    if (!draft.gear || typeof draft.gear !== "object") draft.gear = {};
+    var all = draft.gear[tower.id];
+    if (!all || typeof all !== "object") all = draft.gear[tower.id] = {};
+    return all;
+  }
+
+  /** Clean copy of one Animus's gear: unknown names dropped, fills clamped. */
+  function gearFor(animusId) {
+    var saved = towerGear()[animusId];
+    if (!saved || typeof saved !== "object") return { shell: null, matrices: [] };
+    var seen = {};
+    var matrices = (Array.isArray(saved.matrices) ? saved.matrices : [])
+      .filter(function (m) {
+        if (!m || !matrixById(m.id) || seen[m.id]) return false;
+        seen[m.id] = true;
+        return true;
+      })
+      .slice(0, MATRIX_MAX)
+      .map(function (m) {
+        var full = matrixFull(matrixById(m.id));
+        var fill = parseInt(m.fill, 10);
+        if (!(fill > 0)) fill = full;
+        if (full && fill > full) fill = full;
+        return { id: m.id, fill: fill };
+      });
+    return { shell: saved.shell && shellById(saved.shell) ? saved.shell : null, matrices: matrices };
+  }
+
+  function setGear(animusId, gear) { towerGear()[animusId] = gear; }
+
+  function gearComplete(gear) {
+    if (draft.mode.shell && !gear.shell) return false;
+    if (draft.mode.matrix && gear.matrices.length < MATRIX_MIN) return false;
+    return true;
+  }
+
+  /** Shell and matrices of one recommended build, in the draft's gear shape. */
+  function gearFromBuild(build) {
+    var shell = build && build.shell && build.shell.id && shellById(build.shell.id) ? build.shell.id : null;
+    var seen = {};
+    var matrices = ((build && build.matrices) || [])
+      .filter(function (m) {
+        if (!m.id || !matrixById(m.id) || seen[m.id]) return false;
+        seen[m.id] = true;
+        return true;
+      })
+      .slice(0, MATRIX_MAX)
+      .map(function (m) {
+        var full = matrixFull(matrixById(m.id));
+        var fill = parseInt(m.fill, 10);
+        if (!(fill > 0) || (full && fill > full)) fill = full;
+        return { id: m.id, fill: fill };
+      });
+    return { shell: shell, matrices: matrices };
+  }
+
+  /** Fill empty gear from the Animus's Option 1 build, for whatever mode is on. */
+  function prefillGear(animusId) {
+    if (!gearOn()) return;
+    var a = animusById(animusId);
+    if (!a || !a.builds || !a.builds.length) return;
+    var gear = gearFor(animusId);
+    var rec = gearFromBuild(a.builds[0]);
+    var changed = false;
+    if (!gear.shell && rec.shell) { gear.shell = rec.shell; changed = true; }
+    if (draft.mode.matrix && !gear.matrices.length && rec.matrices.length) {
+      gear.matrices = rec.matrices;
+      changed = true;
+    }
+    if (changed) setGear(animusId, gear);
+  }
+
+  /** Forget gear for Animus that are no longer on the board. */
+  function pruneGear(board) {
+    if (!currentTower()) return;
+    var used = usedMap(board);
+    var all = towerGear();
+    Object.keys(all).forEach(function (id) {
+      if (used[id] == null) delete all[id];
+    });
+  }
+
+  function gearMissing(board) {
+    if (!gearOn()) return 0;
+    var missing = 0;
+    board.forEach(function (team) {
+      team.forEach(function (id) {
+        if (id && !gearComplete(gearFor(id))) missing++;
+      });
+    });
+    return missing;
+  }
+
+  function gearNeed() {
+    return draft.mode.matrix ? "a Shell and " + MATRIX_MIN + "–" + MATRIX_MAX + " Matrix" : "a Shell";
+  }
+
   /* ---- rendering ---- */
 
   function renderDraft() {
+    closeGear(false);
     var tower = currentTower();
 
     view.innerHTML = '' +
@@ -751,8 +882,24 @@
     var board = currentBoard();
     var total = tower.teams * TEAM_SIZE;
     var placed = placedCount(board);
-    var done = placed === total;
+    var missing = gearMissing(board);
+    var filled = placed === total;
+    var done = filled && !missing;
     var target = draftUI.target;
+    var withGear = gearOn();
+
+    var hint;
+    if (done) {
+      hint = "Draft complete. Export it as a picture to share with your guild.";
+    } else if (filled) {
+      hint = missing + (missing === 1 ? " Animus still needs " : " Animus still need ") + gearNeed() +
+        ". Tap the gear row under a portrait to set it.";
+    } else {
+      hint = "Drag a portrait into a slot, or tap a portrait to fill the next empty slot. " +
+        "Tap a slot first to choose where the next pick goes." +
+        (withGear ? " Tap the gear row under a portrait to change its " +
+          (draft.mode.matrix ? "Shell and Matrix." : "Shell.") : "");
+    }
 
     host.innerHTML = '' +
       '<div class="board-head">' +
@@ -762,16 +909,20 @@
       '<div class="board-actions">' +
       '<button type="button" class="btn" data-clear' + (placed ? "" : " disabled") + ">Clear</button>" +
       '<button type="button" class="btn btn-gold" data-export' + (done ? "" : " disabled") +
-      ' title="' + (done ? "Save the draft as a picture" : "Fill every slot to export") + '">' +
+      ' title="' + (done ? "Save the draft as a picture"
+        : filled ? "Give every Animus " + gearNeed() + " to export" : "Fill every slot to export") + '">' +
       "Export image</button>" +
       "</div></div>" +
-      '<p class="board-hint">' +
-      (done
-        ? "Draft complete. Export it as a picture to share with your guild."
-        : "Drag a portrait into a slot, or tap a portrait to fill the next empty slot. " +
-          "Tap a slot first to choose where the next pick goes.") +
-      "</p>" +
-      '<div class="d-teams">' +
+      '<div class="board-modes" role="group" aria-label="Gear to draft">' +
+      '<span class="tower-label">Draft</span>' +
+      '<span class="mode-fixed">Animus</span>' +
+      '<button type="button" class="mode-btn" data-mode="shell" aria-pressed="' + !!draft.mode.shell + '">' +
+      '<span class="mode-tick" aria-hidden="true"></span>Add Shell</button>' +
+      '<button type="button" class="mode-btn" data-mode="matrix" aria-pressed="' + !!draft.mode.matrix + '">' +
+      '<span class="mode-tick" aria-hidden="true"></span>Add Matrix</button>' +
+      "</div>" +
+      '<p class="board-hint">' + esc(hint) + "</p>" +
+      '<div class="d-teams' + (withGear ? " has-gear" : "") + (draft.mode.matrix ? " has-matrix" : "") + '">' +
       board.map(function (team, t) {
         var count = team.filter(Boolean).length;
         return '<div class="d-team' + (count === TEAM_SIZE ? " is-full" : "") + '">' +
@@ -781,20 +932,26 @@
             var isTarget = target && target.t === t && target.s === s;
             var a = id ? animusById(id) : null;
             var label = teamLabel(t) + ", slot " + (s + 1) + (a ? ": " + a.name : ": empty");
+            var slot;
             if (!a) {
-              return '<div class="d-slot is-empty' + (isTarget ? " is-target" : "") +
+              slot = '<div class="d-slot is-empty' + (isTarget ? " is-target" : "") +
                 '" data-team="' + t + '" data-slot="' + s + '" role="button" tabindex="0"' +
                 ' aria-label="' + esc(label) + '" aria-pressed="' + !!isTarget + '">' +
                 '<span class="d-plus" aria-hidden="true">+</span></div>';
+            } else {
+              slot = '<div class="d-slot is-filled' + (isTarget ? " is-target" : "") +
+                '" data-team="' + t + '" data-slot="' + s + '" data-animus-slot="' + esc(a.id) + '"' +
+                (has(a.element) ? ' data-element="' + esc(a.element) + '"' : "") +
+                ' role="button" tabindex="0" aria-label="' + esc(label) + '" aria-pressed="' + !!isTarget + '">' +
+                '<span class="slot-art">' + art(a.card || a.portrait, "", initials(a.name)) + "</span>" +
+                '<span class="slot-name">' + esc(a.name) + "</span>" +
+                '<button type="button" class="d-remove" data-remove aria-label="Remove ' + esc(a.name) +
+                '">×</button></div>';
             }
-            return '<div class="d-slot is-filled' + (isTarget ? " is-target" : "") +
-              '" data-team="' + t + '" data-slot="' + s + '" data-animus-slot="' + esc(a.id) + '"' +
-              (has(a.element) ? ' data-element="' + esc(a.element) + '"' : "") +
-              ' role="button" tabindex="0" aria-label="' + esc(label) + '" aria-pressed="' + !!isTarget + '">' +
-              '<span class="slot-art">' + art(a.card || a.portrait, "", initials(a.name)) + "</span>" +
-              '<span class="slot-name">' + esc(a.name) + "</span>" +
-              '<button type="button" class="d-remove" data-remove aria-label="Remove ' + esc(a.name) +
-              '">×</button></div>';
+            if (!withGear) return slot;
+            return '<div class="d-cell">' + slot +
+              (a ? gearStrip(a, t, s) : '<div class="d-gear is-blank" aria-hidden="true"></div>') +
+              "</div>";
           }).join("") +
           "</div></div>";
       }).join("") +
@@ -803,7 +960,273 @@
     host.querySelectorAll("img").forEach(function (img) { img.draggable = false; });
   }
 
+  /** The small Shell / Matrix row under a placed Animus. Tap it to edit. */
+  function gearStrip(a, t, s) {
+    var gear = gearFor(a.id);
+    var shell = gear.shell ? shellById(gear.shell) : null;
+    var withMatrix = draft.mode.matrix;
+    var said = [];
+
+    var html = '<span class="g-shell' + (shell ? "" : " is-missing") + '"' +
+      (shell ? ' title="' + esc(shell.name) + '"' : "") + ">" +
+      (shell ? icon(shell.icon, "") : '<i aria-hidden="true">+</i>') + "</span>";
+    said.push(shell ? "Shell " + shell.name : "no Shell");
+
+    if (!withMatrix) {
+      html += '<span class="g-label">' + (shell ? esc(shell.name) : "Add Shell") + "</span>";
+    } else {
+      for (var i = 0; i < MATRIX_MAX; i++) {
+        var m = gear.matrices[i];
+        var ref = m ? matrixById(m.id) : null;
+        if (ref) {
+          var full = matrixFull(ref);
+          html += '<span class="g-mx" title="' + esc(ref.name + " " + m.fill + (full ? " / " + full : "")) + '">' +
+            icon(ref.icon, "") +
+            '<b class="' + (full && m.fill < full ? "is-part" : "") + '">' + m.fill + "</b></span>";
+          said.push(ref.name + " " + m.fill + (full ? " of " + full : ""));
+        } else {
+          html += '<span class="g-mx ' + (i < MATRIX_MIN ? "is-missing" : "is-optional") + '">' +
+            (i < MATRIX_MIN ? '<i aria-hidden="true">+</i>' : "") + "</span>";
+        }
+      }
+      if (!gear.matrices.length) said.push("no Matrix");
+    }
+
+    return '<button type="button" class="d-gear' + (withMatrix ? "" : " is-shell-only") +
+      (gearComplete(gear) ? "" : " is-incomplete") +
+      '" data-gear data-team="' + t + '" data-slot="' + s + '"' +
+      ' aria-label="' + esc("Edit gear for " + a.name + ": " + said.join(", ")) + '">' +
+      html + "</button>";
+  }
+
+  /* ---- gear editor (bottom sheet on phones, dialog on desktop) ---- */
+
+  function openGear(pos) {
+    var id = currentBoard()[pos.t][pos.s];
+    if (!id) return;
+    gearUI.animusId = id;
+    gearUI.pos = pos;
+    renderGearEditor(true);
+  }
+
+  function closeGear(restoreFocus) {
+    var host = document.getElementById("gear-sheet");
+    var pos = gearUI.pos;
+    gearUI.animusId = null;
+    gearUI.pos = null;
+    document.body.classList.remove("g-open");
+    if (!host) return;
+    host.remove();
+    if (restoreFocus !== false && pos) {
+      var back = view.querySelector('[data-gear][data-team="' + pos.t + '"][data-slot="' + pos.s + '"]');
+      if (back) back.focus();
+    }
+  }
+
+  function renderGearEditor(first) {
+    var a = gearUI.animusId ? animusById(gearUI.animusId) : null;
+    if (!a) { closeGear(false); return; }
+    var gear = gearFor(a.id);
+    var pos = gearUI.pos;
+
+    var host = document.getElementById("gear-sheet");
+    var scroll = 0;
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "gear-sheet";
+      host.className = "g-sheet";
+      host.addEventListener("click", onGearClick);
+      host.addEventListener("change", onGearChange);
+      view.appendChild(host);
+    } else {
+      var oldBody = host.querySelector(".g-body");
+      if (oldBody) scroll = oldBody.scrollTop;
+    }
+    document.body.classList.add("g-open");
+
+    var builds = (a.builds || []).length
+      ? '<div class="g-builds"><span class="g-builds-label">Use recommended build</span>' +
+        a.builds.map(function (b, i) {
+          return '<button type="button" class="chip" data-g-build="' + i + '">Option ' + esc(b.option) + "</button>";
+        }).join("") + "</div>"
+      : "";
+
+    var shells = Object.keys(DATA.shells || {}).map(function (id) { return DATA.shells[id]; });
+    var shellGrid = '<div class="g-grid">' + shells.map(function (sh) {
+      var on = gear.shell === sh.id;
+      return '<button type="button" class="g-tile" data-g-shell="' + esc(sh.id) + '" aria-pressed="' + on + '">' +
+        '<span class="g-tile-art">' + icon(sh.icon, "") + "</span>" +
+        '<span class="g-tile-name">' + esc(sh.name) + "</span></button>";
+    }).join("") + "</div>";
+
+    var matrixSection = "";
+    if (draft.mode.matrix) {
+      var picked = "";
+      for (var i = 0; i < MATRIX_MAX; i++) {
+        var m = gear.matrices[i];
+        var ref = m ? matrixById(m.id) : null;
+        if (!ref) {
+          picked += '<div class="g-pick is-empty"><span class="g-pick-art" aria-hidden="true">' + (i + 1) + "</span>" +
+            "<span>Matrix " + (i + 1) + (i < MATRIX_MIN ? " — pick one below" : " — optional") + "</span></div>";
+          continue;
+        }
+        var full = matrixFull(ref);
+        var options = "";
+        for (var v = full; v >= 1; v--) {
+          options += '<option value="' + v + '"' + (v === m.fill ? " selected" : "") + ">" + v + "</option>";
+        }
+        picked += '<div class="g-pick">' +
+          '<span class="g-pick-art">' + icon(ref.icon, "") + "</span>" +
+          '<span class="g-pick-name">' + esc(ref.name) + "</span>" +
+          (full
+            ? '<label class="g-fill"><span class="sr-only">' + esc(ref.name) + " fill</span>" +
+              '<select data-g-fill="' + i + '">' + options + "</select><small>/ " + full + "</small></label>"
+            : '<span class="g-fill">' + m.fill + "</span>") +
+          '<button type="button" class="g-unpick" data-g-unpick="' + i + '" aria-label="Remove ' +
+          esc(ref.name) + '">×</button></div>';
+      }
+
+      // Matrices grouped by their full node count, biggest first.
+      var groups = {};
+      Object.keys(DATA.matrices || {}).forEach(function (id) {
+        var ref = DATA.matrices[id];
+        var full = matrixFull(ref);
+        (groups[full] = groups[full] || []).push(ref);
+      });
+      var fulls = Object.keys(groups).map(Number).sort(function (x, y) { return y - x; });
+      var isFull = gear.matrices.length >= MATRIX_MAX;
+      var grids = fulls.map(function (full) {
+        return '<p class="g-group">' + (full ? full + "-node sets" : "Other") + "</p>" +
+          '<div class="g-grid">' + groups[full].map(function (ref) {
+            var at = -1;
+            gear.matrices.forEach(function (m, n) { if (m.id === ref.id) at = n; });
+            var on = at > -1;
+            return '<button type="button" class="g-tile" data-g-matrix="' + esc(ref.id) + '" aria-pressed="' + on + '"' +
+              (!on && isFull ? " disabled" : "") + ">" +
+              (on ? '<span class="g-order">' + (at + 1) + "</span>" : "") +
+              '<span class="g-tile-art">' + icon(ref.icon, "") + "</span>" +
+              '<span class="g-tile-name">' + esc(ref.name) + "</span></button>";
+          }).join("") + "</div>";
+      }).join("");
+
+      matrixSection = '<section class="g-sec">' +
+        "<h3>Matrix <span>" + gear.matrices.length + " / " + MATRIX_MAX + " · pick " + MATRIX_MIN + "–" + MATRIX_MAX + "</span></h3>" +
+        '<div class="g-picked">' + picked + "</div>" + grids + "</section>";
+    }
+
+    host.innerHTML = '' +
+      '<div class="g-backdrop" data-g-close></div>' +
+      '<div class="g-panel" role="dialog" aria-modal="true" aria-labelledby="g-title" tabindex="-1"' +
+      (has(a.element) ? ' data-element="' + esc(a.element) + '"' : "") + ">" +
+      '<div class="g-head">' +
+      '<span class="g-portrait">' + art(a.portrait || a.card, "", initials(a.name)) + "</span>" +
+      '<div class="g-title"><p class="eyebrow">' + (pos ? esc(teamLabel(pos.t) + " · Slot " + (pos.s + 1)) : "") + "</p>" +
+      '<h2 id="g-title">' + esc(a.name) + "</h2></div>" +
+      '<button type="button" class="g-x" data-g-close aria-label="Close">×</button>' +
+      "</div>" +
+      '<div class="g-body">' + builds +
+      '<section class="g-sec"><h3>Shell <span>' + (gear.shell ? "1 / 1" : "pick 1") + "</span></h3>" + shellGrid + "</section>" +
+      matrixSection +
+      "</div>" +
+      '<div class="g-foot">' +
+      '<button type="button" class="btn" data-g-clear>Clear gear</button>' +
+      '<button type="button" class="btn btn-gold" data-g-close>Done</button>' +
+      "</div></div>";
+
+    var body = host.querySelector(".g-body");
+    if (body) body.scrollTop = scroll;
+    if (first) host.querySelector(".g-panel").focus();
+  }
+
+  function commitGear(gear) {
+    setGear(gearUI.animusId, gear);
+    saveDraft();
+    updateBoard();
+    renderGearEditor(false);
+  }
+
+  function onGearClick(event) {
+    var node;
+    if (event.target.closest("[data-g-close]")) { closeGear(); return; }
+    if (!gearUI.animusId) return;
+    var gear = gearFor(gearUI.animusId);
+
+    if ((node = event.target.closest("[data-g-build]"))) {
+      var a = animusById(gearUI.animusId);
+      var build = a.builds[parseInt(node.getAttribute("data-g-build"), 10)];
+      var rec = gearFromBuild(build);
+      gear.shell = rec.shell;
+      if (draft.mode.matrix) gear.matrices = rec.matrices;
+      commitGear(gear);
+      toast("Applied Option " + build.option + " to " + a.name + ".");
+      return;
+    }
+    if ((node = event.target.closest("[data-g-shell]"))) {
+      var shellId = node.getAttribute("data-g-shell");
+      gear.shell = gear.shell === shellId ? null : shellId;
+      commitGear(gear);
+      return;
+    }
+    if ((node = event.target.closest("[data-g-matrix]"))) {
+      var matrixId = node.getAttribute("data-g-matrix");
+      var at = -1;
+      gear.matrices.forEach(function (m, n) { if (m.id === matrixId) at = n; });
+      if (at > -1) {
+        gear.matrices.splice(at, 1);
+      } else if (gear.matrices.length < MATRIX_MAX) {
+        gear.matrices.push({ id: matrixId, fill: matrixFull(matrixById(matrixId)) });
+      } else {
+        toast("An Animus takes up to " + MATRIX_MAX + " Matrix. Remove one first.");
+        return;
+      }
+      commitGear(gear);
+      return;
+    }
+    if ((node = event.target.closest("[data-g-unpick]"))) {
+      gear.matrices.splice(parseInt(node.getAttribute("data-g-unpick"), 10), 1);
+      commitGear(gear);
+      return;
+    }
+    if (event.target.closest("[data-g-clear]")) {
+      commitGear({ shell: null, matrices: [] });
+    }
+  }
+
+  function onGearChange(event) {
+    var select = event.target.closest("[data-g-fill]");
+    if (!select || !gearUI.animusId) return;
+    var gear = gearFor(gearUI.animusId);
+    var m = gear.matrices[parseInt(select.getAttribute("data-g-fill"), 10)];
+    if (!m) return;
+    m.fill = parseInt(select.value, 10);
+    commitGear(gear);
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && gearUI.animusId) closeGear();
+  });
+
+  function setMode(which) {
+    if (which === "shell") {
+      draft.mode.shell = !draft.mode.shell;
+      if (!draft.mode.shell) draft.mode.matrix = false;
+    } else {
+      draft.mode.matrix = !draft.mode.matrix;
+      if (draft.mode.matrix) draft.mode.shell = true;
+    }
+    // Animus already on the board start with their recommended gear.
+    if (gearOn()) {
+      currentBoard().forEach(function (team) {
+        team.forEach(function (id) { if (id) prefillGear(id); });
+      });
+    }
+    refreshDraft();
+    toast(draft.mode.matrix ? "Drafting Animus + Shell + Matrix."
+      : draft.mode.shell ? "Drafting Animus + Shell." : "Drafting Animus only.");
+  }
+
   function refreshDraft() {
+    pruneGear(currentBoard());
     saveDraft();
     updateBoard();
     updatePool();
@@ -836,6 +1259,7 @@
         return;
       }
       board[t][s] = animusId;
+      prefillGear(animusId);
     }
     draftUI.target = null;
     refreshDraft();
@@ -867,6 +1291,7 @@
       var tower = currentTower();
       if (window.confirm("Clear every team in the " + tower.name + " tower?")) {
         draft.boards[tower.id] = [];
+        if (draft.gear) draft.gear[tower.id] = {};
         draftUI.target = null;
         refreshDraft();
       }
@@ -874,6 +1299,14 @@
     }
     if (event.target.closest("[data-export]")) {
       exportDraft();
+      return;
+    }
+    if ((node = event.target.closest("[data-mode]"))) {
+      setMode(node.getAttribute("data-mode"));
+      return;
+    }
+    if ((node = event.target.closest("[data-gear]"))) {
+      openGear(slotPos(node));
       return;
     }
     if ((node = event.target.closest(".p-tile"))) {
@@ -972,7 +1405,7 @@
   function moveGhost(x, y) {
     drag.ghost.style.transform = "translate(" + x + "px," + y + "px) translate(-50%,-50%) rotate(-4deg)";
     var under = document.elementFromPoint(x, y);
-    var slot = under && under.closest(".d-slot");
+    var slot = slotUnder(under);
     if (slot !== drag.over) {
       if (drag.over) drag.over.classList.remove("is-over");
       if (slot) slot.classList.add("is-over");
@@ -980,6 +1413,15 @@
     }
     var pool = under && under.closest(".pool");
     document.body.classList.toggle("is-over-pool", !!(pool && drag.from));
+  }
+
+  /** The slot under the pointer; dropping on a slot's gear row counts too. */
+  function slotUnder(node) {
+    if (!node || !node.closest) return null;
+    var slot = node.closest(".d-slot");
+    if (slot) return slot;
+    var cell = node.closest(".d-cell");
+    return cell ? cell.querySelector(".d-slot") : null;
   }
 
   function onPointerMove(event) {
@@ -1022,7 +1464,7 @@
       suppressClick = true;
       setTimeout(function () { suppressClick = false; }, 0);
       var under = document.elementFromPoint(event.clientX, event.clientY);
-      var slot = under && under.closest(".d-slot");
+      var slot = slotUnder(under);
       var current = drag;
       cancelDrag();
       if (slot) {
@@ -1095,8 +1537,11 @@
 
     // Layout, in CSS pixels. The canvas is drawn at 2× for a sharp picture.
     var S = 2, PAD = 36, LABEL_W = 92, CARD_W = 150, CARD_H = 200, GAP = 12;
-    var NAME_H = 0, ROW_GAP = 16, HEAD_H = 118, FOOT_H = 52;
-    var ROW_H = CARD_H + NAME_H;
+    var ROW_GAP = 16, HEAD_H = 118, FOOT_H = 52;
+    var withShell = gearOn(), withMatrix = !!draft.mode.matrix;
+    var SHELL_H = 28, MX_H = 21;
+    var GEAR_H = withShell ? 8 + SHELL_H + (withMatrix ? 4 + MX_H * MATRIX_MAX : 0) : 0;
+    var ROW_H = CARD_H + GEAR_H;
     var W = PAD * 2 + LABEL_W + CARD_W * TEAM_SIZE + GAP * (TEAM_SIZE - 1) + 24;
     var H = HEAD_H + board.length * ROW_H + (board.length - 1) * ROW_GAP + FOOT_H + PAD;
 
@@ -1118,8 +1563,68 @@
           imageFor["el:" + a.element] = true;
           jobs.push(loadImage(a.elementIcon).then(function (img) { imageFor["el:" + a.element] = img; }));
         }
+        if (!withShell) return;
+        var gear = gearFor(id);
+        var wanted = [];
+        if (gear.shell) wanted.push(["sh:" + gear.shell, shellById(gear.shell).icon]);
+        if (withMatrix) {
+          gear.matrices.forEach(function (m) { wanted.push(["mx:" + m.id, matrixById(m.id).icon]); });
+        }
+        wanted.forEach(function (w) {
+          if (imageFor[w[0]]) return;
+          imageFor[w[0]] = true;
+          jobs.push(loadImage(w[1]).then(function (img) { imageFor[w[0]] = img; }));
+        });
       });
     });
+
+    function gearImage(k) {
+      var img = imageFor[k];
+      return img && img !== true ? img : null;
+    }
+
+    /** Shell row, then one row per Matrix, under a card. */
+    function drawGear(ctx, id, x, gy) {
+      var gear = gearFor(id);
+      var shell = gear.shell ? shellById(gear.shell) : null;
+
+      roundRect(ctx, x, gy, 26, 26, 5);
+      ctx.fillStyle = "rgba(0,0,0,0.38)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(190,180,255,0.14)";
+      ctx.stroke();
+      var shellImg = shell && gearImage("sh:" + shell.id);
+      if (shellImg) ctx.drawImage(shellImg, x + 2, gy + 2, 22, 22);
+      ctx.fillStyle = shell ? "#ECE9F6" : "#7E779A";
+      ctx.font = '600 12.5px "Chakra Petch", sans-serif';
+      ctx.fillText(fitText(ctx, shell ? shell.name : "—", CARD_W - 34), x + 33, gy + 17.5);
+
+      if (!withMatrix) return;
+      for (var i = 0; i < MATRIX_MAX; i++) {
+        var my = gy + SHELL_H + 4 + i * MX_H;
+        var m = gear.matrices[i];
+        var ref = m ? matrixById(m.id) : null;
+        if (!ref) continue;
+        var img = gearImage("mx:" + ref.id);
+        if (img) ctx.drawImage(img, x + 4, my, 17, 17);
+        var full = matrixFull(ref);
+
+        ctx.textAlign = "right";
+        ctx.font = '700 11.5px "Chakra Petch", sans-serif';
+        var tail = full ? "/" + full : "";
+        ctx.fillStyle = "#7E779A";
+        ctx.fillText(tail, x + CARD_W - 2, my + 13);
+        var tailW = ctx.measureText(tail).width;
+        ctx.fillStyle = full && m.fill < full ? "#A8A1C2" : "#E5B45C";
+        ctx.fillText(String(m.fill), x + CARD_W - 2 - tailW, my + 13);
+        var numW = ctx.measureText(String(m.fill)).width + tailW;
+        ctx.textAlign = "left";
+
+        ctx.fillStyle = "#A8A1C2";
+        ctx.font = '500 11px "Anuphan", sans-serif';
+        ctx.fillText(fitText(ctx, ref.name, CARD_W - 28 - numW - 6), x + 27, my + 13);
+      }
+    }
 
     Promise.all([fontsReady].concat(jobs)).then(function () {
       var canvas = document.createElement("canvas");
@@ -1151,7 +1656,8 @@
       ctx.textAlign = "right";
       ctx.fillStyle = "#A8A1C2";
       ctx.font = '600 13px "Chakra Petch", sans-serif';
-      ctx.fillText(board.length + " TEAMS · " + (board.length * TEAM_SIZE) + " ANIMUS", W - PAD, PAD + 16);
+      ctx.fillText(board.length + " TEAMS · " + (board.length * TEAM_SIZE) + " ANIMUS" +
+        (withMatrix ? " · SHELL + MATRIX" : withShell ? " · SHELL" : ""), W - PAD, PAD + 16);
       ctx.fillStyle = "#7E779A";
       ctx.font = '500 12px "Anuphan", sans-serif';
       ctx.fillText(new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
@@ -1230,6 +1736,8 @@
             ctx.font = '600 9px "Anuphan", sans-serif';
             drawSpaced(ctx, a.element.toUpperCase(), x + 9, y + CARD_H - 10, 1.4);
           }
+
+          if (withShell) drawGear(ctx, id, x, y + CARD_H + 8);
         });
       });
 
@@ -1299,6 +1807,7 @@
 
   function route() {
     cancelDrag();
+    closeGear(false);
     var hash = location.hash.replace(/^#\/?/, "");
     var parts = hash.split("/").map(decodeURIComponent);
     var head = parts[0] || "builds";
